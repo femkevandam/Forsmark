@@ -604,6 +604,51 @@ Fig4e
 
 # Microbiology
 
+### Interactive sunburst figures. 
+### KFM02A
+
+<iframe
+  src="docs/KFM02a_krona_sunburst.html"
+  width="100%"
+  height="700"
+  frameborder="0">
+</iframe>
+
+[Open in a separate window](docs/KFM02a_krona_sunburst.html)
+
+### KFM24
+
+<iframe
+  src="docs/KFM24_krona_sunburst.html"
+  width="100%"
+  height="700"
+  frameborder="0">
+</iframe>
+
+[Open in a separate window](docs/KFM24_krona_sunburst.html)
+
+### KFM04A
+
+<iframe
+  src="docs/KFM04a_krona_sunburst.html"
+  width="100%"
+  height="700"
+  frameborder="0">
+</iframe>
+
+[Open in a separate window](docs/KFM04a_krona_sunburst.html)
+
+### KFM10A
+
+<iframe
+  src="docs/KFM10a_krona_sunburst.html"
+  width="100%"
+  height="700"
+  frameborder="0">
+</iframe>
+
+[Open in a separate window](docs/KFM10a_krona_sunburst.html)
+
 ```{r prepare files}
 DNA_relative_abundance_by_species <- read.csv("stuff/stuff/DNA_relative_abundance_by_species.csv")
 RNA_relative_abundance_by_species <- read.csv("stuff/stuff/RNA_relative_abundance_by_species.csv")
