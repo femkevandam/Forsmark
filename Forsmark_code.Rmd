@@ -1,0 +1,1821 @@
+---
+title: "Forsmark"
+author: "Femke van Dam"
+date: "2026-09-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+
+```{r set up}
+setwd("C:/Users/femke/OneDrive - Linnéuniversitetet/Dokument/Forsmark")
+library(readxl)
+library(tidyr)
+library(reshape2)
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+library(scales)
+library(ggrepel)
+library(viridis)
+library(stringr)
+library(forcats)
+```
+
+### Figure 1
+
+```{r map}
+library(rworldxtra)
+library(rworldmap)
+library(sf)
+library(ggplot2)
+
+world <- getMap(resolution = "high")
+world_sf <- st_as_sf(world)
+
+bal_countries <- c("Sweden")
+
+world_bal <- world_sf[
+  world_sf$ADMIN %in% bal_countries,
+]
+
+Coord <- data.frame(
+  latitude = 60.3945,
+  longitude = 18.1824,
+  names = "Forsmark"
+)
+
+```
+
+
+```{r map plot }
+baltic <- ggplot() +
+  geom_sf(
+    data = world_bal,
+    fill = NA,
+    colour = "black"
+  ) +
+  geom_point(
+    data = Coord,
+    aes(
+      x = longitude,
+      y = latitude
+    ),
+    size = 6,
+    colour = "firebrick"
+  ) +
+  coord_sf(
+    xlim = c(10, 28),
+    ylim = c(55, 70),
+    expand = FALSE
+  ) +
+  theme_classic() +
+  xlab("Longitude") +
+  ylab("Latitude") +
+  theme(
+    text = element_text(color = "black"),
+    axis.text.x = element_text(
+      size = 14,
+      color = "black"
+    ),
+    axis.text.y = element_text(
+      size = 14,
+      color = "black"
+    ),
+    axis.title = element_text(size = 16)
+  )
+
+baltic
+
+#ggsave("overviewmap.png", width = 30, height = 44, units = "cm") 
+```
+
+# Geochemical data
+
+```{r gas data}
+Gasdata_KFM <- read_excel("Gasdata_all.xlsx", 
+                               sheet = "Rtable", col_types = c("text", 
+                                                                         "numeric", "numeric", "numeric", 
+                                                                         "numeric", "numeric", "numeric", 
+                                                                         "numeric", "numeric", "numeric", 
+                                                                         "numeric", "numeric", "numeric", 
+                                                                         "numeric", "numeric", "numeric", 
+                                                                         "numeric", "numeric", "numeric", 
+                                                                         "numeric", "numeric", "numeric", 
+                                                                         "text", "date", "numeric", "numeric", 
+                                                                         "numeric", "numeric", "text", "text", 
+                                                                         "text", "numeric","numeric"))
+
+Gasdata_KFM$H2[Gasdata_KFM$H2 == 0] <- 1e-3  
+
+Gasdata_KFM$Source <- as.factor(Gasdata_KFM$Source)
+
+Gasdata_KFM <- Gasdata_KFM %>%
+  mutate(Name = paste(Borehole, Section, sep = ":"))
+
+HydroChemTable_May21_HD <- read_excel("HydroChemTable_May21_HD.xlsx", 
+                                             skip = 2)
+
+SKBdata <- HydroChemTable_May21_HD %>%
+  mutate(Name = paste(IDCODE, SectionCode, sep = ":"))
+relevant_names <- unique(Gasdata_KFM$Name)
+SKB_filtered <- SKBdata %>%
+  filter(Name %in% relevant_names)
+
+SKB_summary <- SKB_filtered %>%
+  group_by(Name) %>%
+  summarise(
+    sulfate = mean(`SO4(mg/l)`, na.rm = TRUE),
+    Temperature = mean(`Temperature for modelling`, na.rm = TRUE),
+    pH = mean(`PH(pH)`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+Gasdata_KFM2 <- Gasdata_KFM %>%
+  left_join(SKB_summary, by = "Name")
+
+Gasdata_KFM2 %>%
+  summarise(
+    n = n(),
+    ph_mean = mean(pH, na.rm = TRUE),
+    ph_sd = sd(pH, na.rm = TRUE),
+    ph_cv = ph_sd / ph_mean
+  )
+
+env <- Gasdata_KFM2[c(32, 33, 43,44), ]
+
+
+```
+
+### Figure 2
+```{r Figure 2}
+
+key_samples <- c("KFM04A:4", "KFM10A:b", "KFM02:3j","KFM02A:3", "KFM03A:5j",
+                 "KFM24:b", "KFM24:c", "KFM01D:4",  "KFM01D:2f", "KFM01D:2f", 
+                 "KFM01D:g",  "KFM01D:g","KFM02A:5","KFM03A:h", "KFM03A:o" )
+
+label_data <- Gasdata_KFM2 %>%
+  filter(
+    Name %in% key_samples |
+      CH4 > quantile(CH4, 0.95) |
+      sulfate > quantile(sulfate, 0.95)
+  )
+
+Fig2a <- ggplot(Gasdata_KFM2, aes(y = Elevation, x = TDS, fill = WaterType)) +
+  geom_point(shape = 21, color = "black", size = 4) +
+  geom_text_repel(
+    aes(label = Name),
+    size = 4,
+    max.overlaps = 20,  
+    box.padding = 0.6,   
+    point.padding = 0.5, 
+    segment.color = "grey50" 
+  )  +    
+  scale_size_continuous(
+    breaks = c(1e-1, 10, 20, 30, 40), labels = c("0",  "10", "20", "30", '40')) +
+  scale_fill_brewer(palette = "Set1") + 
+  theme_classic() +
+  theme(
+    axis.text  = element_text(size = 14, color = "black"),
+    axis.title = element_text(size = 16, color = "black"),
+    legend.text = element_text(size = 16, color = "black"),
+    legend.position = "none"
+  ) +
+  ylim(-1000,0) +
+  ylab(expression(Elevation~ (m))) +
+  xlab(expression(TDS ~ (mg ~L^-1))) +
+  guides(fill = guide_legend(override.aes = list(size = 5)))
+
+Fig2b <- ggplot(Gasdata_KFM2, aes(y = Elevation, x = sulfate, fill = WaterType)) +
+  geom_point(shape = 21, color = "black", size = 4) +
+  geom_text_repel(
+    data = label_data,
+    aes(label = Name),
+    size = 4,
+    box.padding = 1.1,
+    point.padding = 0.9,
+    segment.color = "grey50",
+    force = 2,
+    max.iter = 10000
+  )  +
+  scale_size_continuous(
+    breaks = c(1e-1, 10, 20, 30, 40), labels = c("0",  "10", "20", "30", '40')) +
+  scale_fill_brewer(palette = "Set1") + 
+  theme_classic() +
+  theme(
+    axis.text  = element_text(size = 14, color = "black"),
+    axis.title = element_text(size = 16, color = "black"),
+    legend.text = element_text(size = 16, color = "black"),
+    legend.position = "none"
+  ) +
+  ylim(-1000,0) +
+  ylab(expression(Elevation~(m))) +
+  xlab(expression(Sulfate ~ (mg ~L^-1))) +
+  guides(fill = guide_legend(override.aes = list(size = 5)))
+
+Fig2c <- ggplot(Gasdata_KFM2, aes(y = Elevation, x = DOC, fill = WaterType)) +
+  geom_point(shape = 21, color = "black", size = 4) +
+  geom_text_repel(
+    aes(label = Name),
+    size = 4,
+    max.overlaps = 20, 
+    box.padding = 0.6,
+    point.padding = 0.5,     
+    segment.color = "grey50"
+  )  +    
+  scale_size_continuous(
+    breaks = c(1e-1, 10, 20, 30, 40), labels = c("0",  "10", "20", "30", '40')) +
+  scale_fill_brewer(palette = "Set1") + 
+  theme_classic() +
+  theme(
+    axis.text  = element_text(size = 14, color = "black"),
+    axis.title = element_text(size = 16, color = "black"),
+    legend.text = element_text(size = 16, color = "black"),
+    legend.position = "none"
+  ) +
+  ylim(-1000,0) +
+  ylab(expression(Elevation~ (m))) +
+  xlab(expression(DOC ~ (mg ~L^-1))) +
+  guides(fill = guide_legend(override.aes = list(size = 5)))
+
+Fig2d <- ggplot(Gasdata_KFM, aes(x = `O18(dev)`, y = `D(dev)`, 
+                        fill = WaterType, size = HE)) +
+  geom_point(shape = 21, color = 'black') +
+  # Add the GMWL line (slope = 8, intercept = 10)
+  geom_abline(slope = 8, intercept = 10, linetype = "dashed", color = "black", linewidth = 1) +
+  geom_text_repel(
+    aes(label = Name),
+    size = 4,
+    max.overlaps = Inf,
+    box.padding = 0.6, 
+    point.padding = 0.5,    
+    segment.color = "grey50" 
+  ) +
+  scale_fill_brewer(palette = "Set1") + 
+  scale_size_continuous(breaks = c(1e-1, 10, 20, 30, 40), labels = c("0",  "10", "20", "30", '40')) +
+  theme_classic() +
+  theme(
+    axis.text = element_text(size = 14, color = "black"),  # Change tick labels
+    axis.title = element_text(size = 16, color = "black"),
+    legend.position = "none"
+  ) +
+  xlim(-14, -8) +
+  ylim(-98.5, -60)+
+  ylab(expression(delta * D[H2O] ~ '(‰)')) +
+  xlab(expression(delta^18 * O[H2O] ~ '(‰)'))
+
+Fig2a
+Fig2b
+Fig2c
+Fig2d
+```
+### Figure 3
+```{r Figure 3}
+cols.gas <- c( "HE"= '#56B4E9',"CO2" ="#009E73", "N2"= "#0072B2", "H2"= "#D55E00", "CH4"=  "#CC79A7", "C2H6"= "#F0E442", "C3H8"="#E69F00" , "O₂+Ar"="purple")
+
+gasdata <- melt(Gasdata_KFM, id.vars =c("Borehole", "Section", "WaterType", "Comments on Values", "Source", "Sample_date", "Elevation", "NORTHING_WC_SECMID", "EASTING_WC_SECMID",'Name'))
+
+filtered_data <- gasdata %>%
+  filter((variable %in% c("HE","CO2", "N2", "H2", "CH4", "C2H6", "C3H8","O₂+Ar")))
+
+filtered_data_sum <- filtered_data %>%
+  group_by(Name, variable) %>%
+  summarise(value = sum(value, na.rm = TRUE), .groups = "drop")
+
+# Normalise to proportions
+filtered_data_norm <- filtered_data_sum %>%
+  group_by(Name) %>%
+  mutate(total = sum(value),
+         proportion = value / total * 100) %>%
+  ungroup()
+
+filtered_data_norm$variable <- factor(
+  filtered_data_norm$variable,
+  levels = names(cols.gas)
+)
+
+filtered_data_norm <- filtered_data_norm %>%
+  group_by(variable) %>%
+  mutate(total_prop = sum(proportion)) %>%
+  ungroup() %>%
+  mutate(variable = factor(variable, levels = unique(variable[order(total_prop)])))
+
+ggplot(filtered_data_norm, aes(x = Name, y = proportion, fill = variable)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = cols.gas) +
+  labs(y = "Gas Proportion (%)", x = "Borehole", fill = "Gas") +
+  theme_minimal(base_family = "", base_size = 14) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))  +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), text = element_text(color = "black"),
+    legend.title=element_blank(), 
+        axis.text.x=element_text(size=14,, color = "black"),
+        axis.text.y=element_text(size=14,, color = "black"),
+        legend.key.size = unit(0.3, "cm"), 
+        axis.title = element_text(size = 16),
+        legend.justification = c(1, 0.5),       
+        legend.text = element_text(size = 15), 
+        legend.direction = "vertical"        
+  )
+
+extremes <- Gasdata_KFM2 %>%
+  filter(
+    CH4 > quantile(CH4, 0.9) |
+      CH4 < quantile(CH4, 0.1) |
+      Elevation > quantile(Elevation, 0.9) |
+      Elevation < quantile(Elevation, 0.1)
+  )
+
+label_data <- Gasdata_KFM2 %>%
+  filter(
+    Name %in% key_samples |
+      CH4 > quantile(CH4, 0.95) |
+      sulfate > quantile(sulfate, 0.95)
+  )
+
+Fig3b <- ggplot(Gasdata_KFM2, aes(x = CH4, y = Elevation, fill = WaterType)) +
+  geom_point(shape = 21, color = "black", size = 4) +
+  geom_text_repel(
+    aes(label = Name),
+    size = 4,
+    max.overlaps = 4, 
+    box.padding = 0.6,  
+    point.padding = 0.5,     
+    segment.color = "grey50" 
+  )  +
+  scale_size_continuous(
+    breaks = c(1e-1, 10, 20, 30, 40), labels = c("0",  "10", "20", "30", '40')) +
+  scale_fill_brewer(palette = "Set1") + 
+  theme_classic() +
+  theme(
+    axis.text  = element_text(size = 14, color = "black"),
+    axis.title = element_text(size = 16, color = "black"),
+    legend.text = element_text(size = 16, color = "black"),
+    legend.position = "none"
+  ) +
+  scale_x_log10() +
+  ylim(-1000,0) +
+  xlab(expression(CH[4] ~ (ml~ L^-1))) +
+  ylab(expression(Elevation ~(m))) +
+  guides(fill = guide_legend(override.aes = list(size = 5)))
+
+Fig3c <- ggplot(Gasdata_KFM2, aes(x = CH4, y = TDS/1000, fill = WaterType)) +
+  geom_point(shape = 21, color = "black", size = 4) +
+  geom_text_repel(
+    aes(label = Name),
+    size = 4,
+    max.overlaps = 20, 
+    box.padding = 0.8,   
+    point.padding = 0.8,     
+    segment.color = "grey50" 
+  )  +    
+  scale_size_continuous(
+    breaks = c(1e-1, 10, 20, 30, 40), labels = c("0",  "10", "20", "30", '40')) +
+  scale_fill_brewer(palette = "Set1") + 
+  theme_classic() +
+  theme(
+    axis.text  = element_text(size = 14, color = "black"),
+    axis.title = element_text(size = 16, color = "black"),
+    legend.text = element_text(size = 16, color = "black"),
+    legend.position = "none"
+  ) +
+  scale_x_log10() +
+  scale_y_reverse() +
+  xlab(expression(CH[4] ~ (ml~ L^-1))) +
+  ylab(expression(TDS ~ (g ~L^-1))) +
+  guides(fill = guide_legend(override.aes = list(size = 5)))
+
+Fig3d <- ggplot(Gasdata_KFM2, aes(x = CH4, y = sulfate, fill = WaterType)) +
+  geom_point(shape = 21, color = "black", size = 4) +
+  geom_text_repel(
+    data = label_data,
+    aes(label = Name),
+    size = 4,
+    box.padding = 0.4,
+    point.padding = 1.2,
+    segment.color = "grey50",
+    force = 2,
+    max.iter = 10000
+  ) +
+  scale_size_continuous(
+    breaks = c(1e-1, 10, 20, 30, 40), labels = c("0",  "10", "20", "30", '40')) +
+  scale_fill_brewer(palette = "Set1") + 
+  theme_classic() +
+  theme(
+    axis.text  = element_text(size = 14, color = "black"),
+    axis.title = element_text(size = 16, color = "black"),
+    legend.text = element_text(size = 16, color = "black"),
+    legend.position = "none"
+  ) +
+  scale_x_log10() +
+  scale_y_reverse(limits = c(600,0)) +
+  xlab(expression(CH[4] ~ (ml~ L^-1))) +
+  ylab(expression(Sulfate ~ (mg ~L^-1))) +
+  guides(fill = guide_legend(override.aes = list(size = 5)))
+
+DOC_cor <-subset(Gasdata_KFM2, (!is.na(Gasdata_KFM2[,33])))
+DOC_cor <- DOC_cor[-c(2,4,6),]
+
+cor(DOC_cor$CH4, DOC_cor$DOC, method = "pearson")
+
+Fig3e <- ggplot(Gasdata_KFM2, aes(x = CH4, y = DOC, fill = WaterType)) +
+  geom_point(shape = 21, color = "black", size = 4) +
+  geom_text_repel(
+    aes(label = Name),
+    size = 4,
+    max.overlaps = 20,
+    box.padding = 0.6,     
+    point.padding = 0.5,     
+    segment.color = "grey50" 
+  )  +    
+  scale_size_continuous(
+    breaks = c(1e-1, 10, 20, 30, 40), labels = c("0",  "10", "20", "30", '40')) +
+  scale_fill_brewer(palette = "Set1") + 
+  theme_classic() +
+  theme(
+    axis.text  = element_text(size = 14, color = "black"),
+    axis.title = element_text(size = 16, color = "black"),
+    legend.text = element_text(size = 16, color = "black"),
+    legend.position = "none"
+  ) +
+  scale_x_log10() +
+  ylim(0,8) +
+  xlab(expression(CH[4] ~ (ml~ L^-1))) +
+  ylab(expression(DOC ~ (mg ~L^-1))) +
+  guides(fill = guide_legend(override.aes = list(size = 5)))
+
+Fig3e
+Fig3b
+Fig3c
+Fig3d
+```
+### Figure 4
+
+```{r Figure 4}
+
+Fig4a <- ggplot(Gasdata_KFM, aes(x = delta_13c_in_ch4, y = Elevation, fill = WaterType)) +
+  geom_point(shape = 21, color = "black", size = 4) +
+  geom_text_repel(
+    aes(label = Name),
+    size = 4,
+    max.overlaps = 20,  
+    box.padding = 0.6,      
+    point.padding = 0.5,    
+    segment.color = "grey50" 
+  ) +
+  scale_fill_brewer(palette = "Set1") + 
+  theme_classic() +
+  theme(
+    axis.text  = element_text(size = 14, color = "black"),
+    axis.title = element_text(size = 16, color = "black"),
+    legend.text = element_text(size = 16, color = "black"),
+    legend.position = "none"
+  ) +
+  xlim(-70, -30) +
+  ylim(-700, 0) +
+  xlab(expression(delta^13 * C[CH4] ~ '(‰)')) +
+  ylab(expression(Elevation ~ (m))) +
+  guides(fill = guide_legend(override.aes = list(size = 5)))
+
+Fig4b <- ggplot(Gasdata_KFM, aes(x = delta_13c_in_ch4, y = TDS/1000, fill = WaterType)) +
+  geom_point(shape = 21, color = "black", size = 4) +
+  geom_text_repel(
+    aes(label = Name),
+    size = 4,
+    max.overlaps = 20,   
+    box.padding = 0.6,     
+    point.padding = 0.5,    
+    segment.color = "grey50" 
+  ) +
+  scale_fill_brewer(palette = "Set1") + 
+  theme_classic() +
+  theme(
+    axis.text  = element_text(size = 14, color = "black"),
+    axis.title = element_text(size = 16, color = "black"),
+    legend.text = element_text(size = 16, color = "black"),
+    legend.position = "none"
+  ) +
+  xlim(-70, -30) +
+  scale_y_reverse(limits = c(12, 5)) +
+  xlab(expression(delta^13 * C[CH4] ~ '(‰)')) +
+  ylab(expression(TDS ~ (g ~L^-1))) +
+  guides(fill = guide_legend(override.aes = list(size = 5)))
+
+Fig4c <- ggplot(Gasdata_KFM2, aes(x = delta_13c_in_ch4, y = sulfate, fill = WaterType, size=CH4)) +
+  geom_point(shape = 21, color = "black", size = 4) +
+  geom_text_repel(
+    aes(label = Name),
+    size = 4,
+    max.overlaps = 20,   
+    box.padding = 0.6,    
+    point.padding = 0.5,   
+    segment.color = "grey50" 
+  ) +
+  scale_size_continuous(
+    breaks = c(1e-1, 10, 20, 30, 40), labels = c("0",  "10", "20", "30", '40')) +
+  scale_fill_brewer(palette = "Set1") + 
+  theme_classic() +
+  theme(
+    axis.text  = element_text(size = 14, color = "black"),
+    axis.title = element_text(size = 16, color = "black"),
+    legend.text = element_text(size = 16, color = "black"),
+    legend.position = "none"
+  ) +
+  xlim(-70, -30) +
+  scale_y_reverse(limits = c(600,0)) +
+  xlab(expression(delta^13 * C[CH4] ~ '(‰)')) +
+  ylab(expression(Sulfate ~ (mg ~L^-1))) +
+  guides(fill = guide_legend(override.aes = list(size = 5)))
+
+Fig4d <- ggplot(Gasdata_KFM, aes(x = delta_13c_in_ch4, y = DOC, fill = WaterType, size=CH4)) +
+  geom_point(shape = 21, color = "black", size = 4) +
+  geom_text_repel(
+    aes(label = Name),
+    size = 4,
+    max.overlaps = 20,    
+    box.padding = 0.6,      
+    point.padding = 0.5,   
+    segment.color = "grey50" 
+  ) +
+  scale_size_continuous(
+    breaks = c(1e-1, 10, 20, 30, 40), labels = c("0",  "10", "20", "30", '40')) +
+  scale_fill_brewer(palette = "Set1") + 
+  theme_classic() +
+  theme(
+    axis.text  = element_text(size = 14, color = "black"),
+    axis.title = element_text(size = 16, color = "black"),
+    legend.text = element_text(size = 16, color = "black"),
+    legend.position = "none"
+  ) +
+  xlim(-70, -30) +
+  ylim(0,10) +
+  xlab(expression(delta^13 * C[CH4] ~ '(‰)')) +
+  ylab(expression(DOC ~ (mg ~L^-1))) +
+  guides(fill = guide_legend(override.aes = list(size = 5)))
+
+#calculate Dexcess
+Gasdata_KFM2$excess <- Gasdata_KFM2$`D(dev)`- (8*Gasdata_KFM2$`O18(dev)`)
+
+selected_data <-subset(Gasdata_KFM2, (!is.na(Gasdata_KFM2[,38])))
+
+(corrhed <- cor(selected_data$excess, selected_data$HE, method = 'pearson'))
+
+Fig4e <- ggplot(Gasdata_KFM2, aes(x = HE, y = excess, fill = WaterType)) +
+  geom_point(shape = 21, color = "black", size = 4) +
+  geom_text_repel(
+    aes(label = Name),
+    size = 4,
+    max.overlaps = 20,
+    box.padding = 0.6,    
+    point.padding = 0.5,   
+    segment.color = "grey50" 
+  ) +    
+  geom_smooth(aes(group = 1), method = "lm", formula = y ~ x, se = F, 
+                     linewidth = 1, linetype = "dashed", color='black') +
+  scale_size_continuous(
+    breaks = c(1e-1, 10, 20, 30, 40), labels = c("0",  "10", "20", "30", '40')) +
+  scale_fill_brewer(palette = "Set1") + 
+  theme_classic() +
+  theme(
+    axis.text  = element_text(size = 14, color = "black"),
+    axis.title = element_text(size = 16, color = "black"),
+    legend.text = element_text(size = 16, color = "black"),
+    legend.position = "none"
+  ) +
+  xlab(expression(He ~ (ml~ L^-1))) +
+  ylab(expression(D ~ excess)) +
+  guides(fill = guide_legend(override.aes = list(size = 5)))
+
+Fig4a 
+Fig4b 
+Fig4c 
+Fig4d 
+Fig4e 
+
+```
+
+
+# Microbiology
+
+```{r prepare files}
+DNA_relative_abundance_by_species <- read.csv("stuff/stuff/DNA_relative_abundance_by_species.csv")
+RNA_relative_abundance_by_species <- read.csv("stuff/stuff/RNA_relative_abundance_by_species.csv")
+
+clean_taxonomy <- function(df) {
+  df %>%
+    mutate(species = gsub("[a-z]__", "", species)) %>%
+    separate(
+      species,
+      into = c("domain","phylum","class","order","family","genus","species"),
+      sep = ";",
+      fill = "right",
+      remove = FALSE
+    ) %>%
+    mutate(across(
+      c(domain, phylum, class, order, family, genus, species),
+      ~ ifelse(.x %in% c("unclassified", "Unclassified", "", NA),
+               "Unclassified", as.character(.x))
+    )) %>%
+    filter(domain != "unmapped") %>%
+    mutate(taxon = coalesce(species, genus, family, order, class, phylum))
+}
+
+rename_map <- c(
+  "KFM02a.2" = "KFM02A_2",
+  "KFM02a.3" = "KFM02A_3",
+  "KFM02a.5"   = "KFM02A_5",   
+  "KFM24.1"    = "KFM24_1",  
+  "KFM24.2"    = "KFM24_2",  
+  "KFM24.3" = "KFM24_3",
+  "KFM04.A.DNA1" = "KFM04A_1",
+  "KFM04.A.DNA2" = "KFM04A_2",
+  "KFM04.A.DNA3" = "KFM04A_3",
+  "KFM04.A.DNA4" = "KFM04A_4",
+  "KFM10.A.DNA1" = "KFM10A_1",
+  "KFM10.A.DNA2" = "KFM10A_2")
+
+bintax_DNA <- clean_taxonomy(DNA_relative_abundance_by_species)
+
+# rename columns
+for (old in names(rename_map)) {
+  if (old %in% names(bintax_DNA)) {
+    names(bintax_DNA)[names(bintax_DNA) == old] <- rename_map[[old]]
+  }
+}
+
+bintax_long_DNA <- bintax_DNA %>%
+  pivot_longer(
+    cols = matches("KFM"),
+    names_to = "replicate",
+    values_to = "abundance"
+  ) %>%
+  mutate(sample = sub("_[0-9]+$", "", replicate)) %>%
+  group_by(domain, phylum, class, order, family, genus, species, taxon, sample) %>%
+  summarise(abundance = sum(abundance), .groups = "drop") %>%
+  group_by(sample) %>%
+  mutate(abundance = abundance / sum(abundance)) %>%
+  ungroup()
+
+# Rename KFM replicates
+rename_map <- c(
+  "Forsmark.KFM10A.FH3.20231020.1" = "KFM10A_1",
+  "Forsmark.KFM10A.FH4.20231020.2" = "KFM10A_2",
+  "Forsmark.KFM04A.FH2.20231020.2" = "KFM04A_4",
+  "Forsmark.KFM04A.FH1.20231020.1" = "KFM04A_3",
+  "Forsmark.KFM04A.FH1.20231019.1" = "KFM04A_1",
+  "Forsmark.KFM04A.FH2.20231019.2" = "KFM04A_2",
+  "Forsmark.KFM04A.culture" = "culture"
+)
+bintax_RNA_clean <- clean_taxonomy(RNA_relative_abundance_by_species)
+
+# rename columns
+for (old in names(rename_map)) {
+  if (old %in% names(bintax_RNA_clean)) {
+    names(bintax_RNA_clean)[names(bintax_RNA_clean) == old] <- rename_map[[old]]
+  }
+}
+
+bintax_long_RNA <- bintax_RNA_clean %>%
+  pivot_longer(
+    cols = matches("KFM"),
+    names_to = "replicate",
+    values_to = "abundance"
+  ) %>%
+  mutate(sample = sub("_[0-9]+$", "", replicate)) %>%
+  group_by(domain, phylum, class, order, family, genus, species, taxon, sample) %>%
+  summarise(abundance = sum(abundance), .groups = "drop") %>%
+  group_by(sample) %>%
+  mutate(abundance = abundance / sum(abundance)) %>%
+  ungroup()
+
+```
+
+
+```{r top taxa selection}
+get_dominant_family <- function(long_df, min_abund = 0.01, min_samples = 2) {
+  long_df %>%
+    group_by(family, sample) %>%
+    summarise(rel_abund = sum(abundance), .groups = "drop") %>%
+    mutate(flag = rel_abund >= min_abund) %>%
+    group_by(family) %>%
+    summarise(n_samples = sum(flag), .groups = "drop") %>%
+    filter(n_samples >= min_samples) %>%
+    pull(family)
+}
+
+dominant_family_DNA <- get_dominant_family(bintax_long_DNA)
+dominant_family_RNA <- get_dominant_family(bintax_long_RNA)
+
+
+forced_family <- c(
+  "Methanobacteriaceae",
+  "Methanomethylophilaceae",
+  "Methanospirillaceae"
+)
+
+family_to_show <- unique(c(
+  dominant_family_DNA,
+  dominant_family_RNA,
+  forced_family
+))
+
+make_plot_df <- function(long_df, family_to_show) {
+  long_df %>%
+    mutate(
+      family_plot = case_when(
+        family %in% family_to_show ~ family,
+        family == "Unclassified" ~ "Unclassified",
+        TRUE ~ "Other"
+      )
+    ) %>%
+    group_by(sample, family_plot) %>%
+    summarise(abundance = sum(abundance), .groups = "drop")
+}
+
+DNA_plot_df <- make_plot_df(bintax_long_DNA, family_to_show)
+RNA_plot_df <- make_plot_df(bintax_long_RNA, family_to_show)
+
+family_order <- function(plot_df) {
+  plot_df %>%
+    group_by(family_plot) %>%
+    mutate(total_abundance = sum(abundance)) %>%
+    ungroup() %>%
+    mutate(
+      family_plot = fct_reorder(family_plot, total_abundance, .desc = TRUE),
+      family_plot = fct_relevel(family_plot, "Other", "Unclassified", after = Inf)
+    ) %>%
+    dplyr::select(-total_abundance)
+}
+
+DNA_plot_df <- family_order(DNA_plot_df)
+RNA_plot_df <- family_order(RNA_plot_df)
+
+DNA_plot_familyified <- DNA_plot_df %>% filter(family_plot != "Unclassified")
+RNA_plot_familyified <- RNA_plot_df %>% filter(family_plot != "Unclassified")
+
+```
+
+### Figure 6, Supplementary Figures 3-5
+```{r plot}
+library(Polychrome)
+real_family <- setdiff(family_to_show, c("Unclassified", "Other"))
+length(real_family)  # should be 13
+
+cb_real <- createPalette(
+  length(real_family),
+  seedcolors = c( c(
+    "#1b9e77", 
+    "#d95f02",  
+    "#7570b3",  
+    "#e7298a",  
+    "#66a61e",  
+    "#e6ab02",  
+    "#a6761d",  
+    "#666666",  
+    "#1f78b4",  
+    "#b2df8a",  
+    "#fb9a99",  
+    "#fdbf6f",  
+    "#cab2d6"   
+  )
+  )
+)
+
+names(cb_real) <- real_family
+cb_transparent <- c("Unclassified" = alpha("#999999", 0.5),
+                    "Other" = alpha("#000000", 0.5))
+cb_palette <- c(
+  "Unclassified" = alpha("grey60", 0.6),
+  "Other" = alpha("grey20", 0.6),
+  cb_real
+)
+
+
+# ---------- Plots ----------
+MetaG <- ggplot(DNA_plot_df, aes(x = sample, y = abundance, fill = family_plot)) +
+  geom_col(width = 0.85,
+           position = position_stack(reverse = TRUE)) +
+  scale_fill_manual(values = cb_palette, drop = FALSE) +
+  labs(x = NULL, y = "Relative Abundance", fill = NULL) +
+  theme_minimal(base_size = 16) +
+  theme(axis.text.x = element_text(hjust = 1,colour = "black", angle = 45,size = 16),
+        axis.text.y = element_text(colour = "black",size = 16),
+        axis.title = element_text(size = 16),
+
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        legend.position = "bottom",
+        legend.direction = "horizontal",
+        legend.box = "full",
+        legend.text = element_text(size = 16)) +
+  guides(fill = guide_legend(nrow = 4, byrow = TRUE))
+
+MetaT <- ggplot(RNA_plot_df, aes(x = sample, y = abundance, fill = family_plot)) +
+  geom_col(width = 0.85,
+           position = position_stack(reverse = TRUE)) +
+  scale_fill_manual(values = cb_palette, drop = FALSE) +
+  labs(x = NULL, y = "Relative Abundance", fill = NULL) +
+  theme_minimal(base_size = 16) +
+  theme(axis.text.x = element_text(hjust = 1,colour = "black", angle = 45,size = 16),
+        axis.text.y = element_text(colour = "black",size = 16),
+        axis.title = element_text(size = 16),
+
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        legend.position = "bottom",
+        legend.direction = "horizontal",
+        legend.box = "full",
+        legend.text = element_text(size = 16)) +
+  guides(fill = guide_legend(nrow = 2))
+
+
+barplots_family_forsmark <- ggarrange(MetaG, MetaT,
+                                      labels = c("a", "b"),
+                                      ncol = 2, nrow = 1,
+                                      widths = c(2, 1.2),   # <- key line
+                                      legend = 'bottom',
+                                      common.legend = TRUE)
+barplots_family_forsmark
+```
+
+### Figure 7
+```{r create methanogen/acetogen data set}
+putative_acetogens_full <- read.csv("stuff/stuff/putative_acetogens_full.csv")
+acetogens <- dplyr::select(putative_acetogens_full,tax,relabs.KFM10, relabs.KFM04,
+  mOTU
+)
+
+#selecting only the acetate consumers linked to metabolic iron/sulfate reduction
+remove_motus <- c(
+  "FSGD2_mOTU_0113",
+  "FSGD2_mOTU_0919",
+  "FSGD2_mOTU_0599",
+  "FSGD2_mOTU_0351",
+  "FSGD2_mOTU_0045",
+  "FSGD2_mOTU_0596"
+)
+
+acetogens <- acetogens %>%
+  filter(!mOTU %in% remove_motus)
+
+#write.csv(acetogens, "acetogens_sunburst.csv", row.names = FALSE)
+
+key_genes_methanogenesis_acetoclastic <- read.csv("Moritz/key_genes_methanogenesis_acetoclastic.csv")
+meth <- unique(c(key_genes_methanogenesis_acetoclastic$taxonomy,
+                 c("d__Archaea;p__Methanobacteriota;c__Methanobacteria;o__Methanobacteriales;f__Methanobacteriaceae;g__UBA349;s__UBA349 sp023249725", 
+                   "d__Archaea;p__Thermoplasmatota;c__Thermoplasmata;o__Methanomassiliicoccales;f__Methanomethylophilaceae;g__JAQUUA01;s__")))
+
+meth_clean <- meth[
+  !is.na(meth) &
+    trimws(meth) != ""
+]
+
+acet <- acetogens$tax
+acet <- na.omit(acet)
+
+meth_acet <- c(meth_clean,acet)
+
+parse_tax <- function(df, col) {
+  df %>%
+    mutate(tax = gsub("[a-z]__", "", .data[[col]])) %>%
+    separate(
+      tax,
+      into = c("domain","phylum","class","order","family","genus","species_rank"),
+      sep = ";",
+      fill = "right",
+      remove = FALSE
+    )
+}
+
+DNA_tax <- parse_tax(DNA_relative_abundance_by_species, "species")
+RNA_tax <- parse_tax(RNA_relative_abundance_by_species, "species")
+
+definitions <- tibble(
+  tax = c(
+    # methanogens
+    key_genes_methanogenesis_acetoclastic$taxonomy,
+    "d__Archaea;p__Methanobacteriota;c__Methanobacteria;o__Methanobacteriales;f__Methanobacteriaceae;g__UBA349;s__UBA349 sp023249725",
+    "d__Archaea;p__Thermoplasmatota;c__Thermoplasmata;o__Methanomassiliicoccales;f__Methanomethylophilaceae;g__JAQUUA01;s__",
+    # acetogens
+    acetogens$tax
+  )
+) %>%
+  filter(!is.na(tax)) %>%
+  mutate(tax = gsub("[a-z]__", "", tax)) %>%
+  separate(
+    tax,
+    into = c("domain","phylum","class","order","family","genus","species_rank"),
+    sep = ";",
+    fill = "right"
+  ) %>%
+  filter(
+    !is.na(family),
+    trimws(family) != "") %>%
+  distinct(domain, phylum, class, order, family)
+
+acet_meth_DNA <- DNA_tax %>%
+  semi_join(
+    definitions,
+    by = c("domain","phylum","class","order","family")
+  )
+
+acet_meth_RNA <- RNA_tax %>%
+  semi_join(
+    definitions,
+    by = c("domain","phylum","class","order","family")
+  )
+
+acet_meth_merged <- acet_meth_DNA %>%
+  left_join(
+    acet_meth_RNA,
+    by = "species",
+    suffix = c("_DNA", "_RNA")
+  )
+
+```
+
+
+```{r define the paired DNA and RNA samples}
+library(purrr)
+eps <- 1e-6
+
+paired_samples <- tibble(
+  site = c(
+    "KFM04A",
+    "KFM04A",
+    "KFM04A",
+    "KFM04A",
+    "KFM10A",
+    "KFM10A"
+  ),
+  
+  sample = c(
+    "KFM04A-FH1-20231019-1",
+    "KFM04A-FH2-20231019-2",
+    "KFM04A-FH1-20231020-1",
+    "KFM04A-FH2-20231020-2",
+    "KFM10A-FH3-20231020-1",
+    "KFM10A-FH4-20231020-2"
+  ),
+  
+  DNA = c(
+    "KFM04.A.DNA1",
+    "KFM04.A.DNA2",
+    "KFM04.A.DNA3",
+    "KFM04.A.DNA4",
+    "KFM10.A.DNA1",
+    "KFM10.A.DNA2"
+  ),
+  
+  RNA = c(
+    "Forsmark.KFM04A.FH1.20231019.1",
+    "Forsmark.KFM04A.FH2.20231019.2",
+    "Forsmark.KFM04A.FH1.20231020.1",
+    "Forsmark.KFM04A.FH2.20231020.2",
+    "Forsmark.KFM10A.FH3.20231020.1",
+    "Forsmark.KFM10A.FH4.20231020.2"
+  )
+)
+
+#build dataset
+activity_long <- map2_dfr(
+  paired_samples$DNA,
+  paired_samples$RNA,
+  
+  function(dna_col, rna_col) {
+    
+    tibble(
+      species = acet_meth_merged$species,
+      
+      family = acet_meth_merged$family_DNA,
+      order = acet_meth_merged$order_DNA,
+      phylum = acet_meth_merged$phylum_DNA,
+      domain = acet_meth_merged$domain_DNA,
+      
+      DNA = as.numeric(acet_meth_merged[[dna_col]]),
+      RNA = as.numeric(acet_meth_merged[[rna_col]])
+    )
+  },
+  
+  .id = "pair"
+) %>%
+  
+  left_join(
+    paired_samples %>%
+      mutate(pair = as.character(row_number())),
+    
+    by = "pair"
+  )
+```
+
+```{r aggregate to family level}
+
+activity_family <- activity_long %>%
+  filter(
+    !is.na(family),
+    family != ""
+  ) %>%
+  group_by(
+    site,
+    sample,
+    domain,
+    phylum,
+    order,
+    family
+  ) %>%
+  summarise(
+    DNA = sum(DNA.x, na.rm = TRUE),
+    RNA = sum(RNA.x, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  
+  mutate(
+    log2ratio = log2(
+      (RNA + eps) /
+        (DNA + eps)
+    )
+  )
+
+activity_family %>%
+  count(site, sample)
+
+nrow(activity_family)
+
+activity_family %>%
+  dplyr::select(site, sample, domain, phylum, order, family, DNA, RNA, log2ratio)
+
+family_abundance <- activity_family %>%
+  group_by(
+    domain,
+    phylum,
+    order,
+    family
+  ) %>%
+  summarise(
+    mean_DNA = mean(DNA, na.rm = TRUE),
+    max_DNA = max(DNA, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+abundance_threshold <- 0.0000001
+families_to_keep <- family_abundance %>%
+  filter(
+    max_DNA >= abundance_threshold
+  ) %>%
+  dplyr::select(
+    domain,
+    phylum,
+    order,
+    family
+  )
+
+activity_family_filtered <- activity_family %>%
+  semi_join(
+    families_to_keep,
+    by = c(
+      "domain",
+      "phylum",
+      "order",
+      "family"
+    )
+  )
+
+activity_family_filtered <- activity_family_filtered %>%
+  mutate(
+    domain = if_else(
+      is.na(domain) | domain == "",
+      "Unclassified",
+      domain
+    ),
+    phylum = if_else(
+      is.na(phylum) | phylum == "",
+      "Unclassified",
+      phylum
+    ),
+    order = if_else(
+      is.na(order) | order == "",
+      "Unclassified",
+      order
+    )
+  )
+
+# calculate DNA abundance per phylum
+phylum_abundance <- activity_family_filtered %>%
+  group_by(
+    domain,
+    phylum
+  ) %>%
+  summarise(
+    mean_DNA = mean(DNA, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    domain_order = case_when(
+      domain == "Archaea" ~ 1,
+      domain == "Bacteria" ~ 2,
+      TRUE ~ 3
+    )
+  )
+
+# order phyla
+phylum_order_table <- phylum_abundance %>%
+  filter(domain != "Archaea") %>%
+  arrange(mean_DNA)
+
+archaea_phyla <- phylum_abundance %>%
+  filter(domain == "Archaea") %>%
+  arrange(mean_DNA)
+
+phylum_order_table <- bind_rows(
+  archaea_phyla,
+  phylum_order_table
+)
+
+phylum_levels <- phylum_order_table$phylum
+
+# order families according to their phylum
+# within each phylum, keep families together
+family_order_table <- activity_family_filtered %>%
+  distinct(
+    domain,
+    phylum,
+    order,
+    family
+  ) %>%
+  mutate(
+    phylum = factor(
+      phylum,
+      levels = phylum_levels
+    )
+  ) %>%
+  arrange(
+    phylum,
+    family
+  )
+
+family_levels <- family_order_table$family
+
+activity_family_filtered <- activity_family_filtered %>%
+  mutate(
+    phylum = factor(
+      phylum,
+      levels = phylum_levels
+    ),
+    family = factor(
+      family,
+      levels = family_levels
+    )
+  )
+
+activity_family_filtered <- activity_family_filtered %>%
+  mutate(
+    domain = factor(
+      domain,
+      levels = c(
+        "Bacteria",
+        "Archaea",
+        "Unclassified"
+      )
+    )
+  )
+
+```
+
+```{r activity plot}
+activity_plot <- ggplot(
+  activity_family_filtered,
+  aes(
+    x = log2ratio,
+    y = family,
+    colour = phylum)
+  ) +
+  geom_vline(
+    xintercept = 0,
+    linetype = "dashed",
+    linewidth = 0.6,
+    colour = "black"
+  ) +
+  geom_point(
+    size = 3,
+    alpha = 0.8,
+    position = position_jitter(
+      height = 0.08,
+      width = 0)
+  ) +
+  scale_colour_viridis_d(
+    option = "viridis",
+    guide = guide_legend(
+      reverse = TRUE)
+  ) +
+  facet_grid(
+    domain ~ site,
+    scales = "free_y",
+    space = "free_y"
+  ) +
+  scale_x_continuous(
+    limits = c(-6, 6),
+    breaks = c(-6, -3, 0, 3, 6)
+  ) +
+  labs(
+    x = "log2(RNA/DNA)",
+    y = NULL,
+    colour = "Phylum"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.y = element_text(
+      size = 10,
+      colour = "black"),
+    axis.text.x = element_text(
+      size = 10,
+      colour = "black"),
+    strip.text = element_text(
+      size = 11,
+      face = "bold"),
+    legend.position = "right"
+  )
+activity_plot
+```
+
+### Figure 8
+```{r prep dotplot}
+mOTU_data <- read.csv("Moritz/mOTU_data.csv") 
+DNA_cov <- read_excel("DNA_cov.xlsx", skip = 1)
+DNA_cov <- DNA_cov %>%
+  mutate(
+    across(
+      c(-KO, -KO_name),
+      ~ as.numeric(.x)
+    )
+  )
+DNA_cov <- DNA_cov %>%
+  dplyr::select(-starts_with("..."))
+RNA_cov <- read.csv("Moritz/normed_RNA_covs_w_KOnames-WB-01969.csv")
+
+#rename columns
+rename_DNA <- c(
+  "KFM02a-2" = "KFM02A-2",
+  "KFM02a-3" = "KFM02A-3",
+  "KFM02a-5" = "KFM02A-5",
+  "KFM24-1"  = "KFM24-1",
+  "KFM24-2"  = "KFM24-2",
+  "KFM24-3"  = "KFM24-3",
+  "KFM04-A-DNA1" = "KFM04A-1",
+  "KFM04-A-DNA2" = "KFM04A-2",
+  "KFM04-A-DNA3" = "KFM04A-3",
+  "KFM04-A-DNA4" = "KFM04A-4",
+  "KFM10-A-DNA1" = "KFM10A-1",
+  "KFM10-A-DNA2" = "KFM10A-2"
+)
+
+rename_RNA <- c(
+  "Forsmark.KFM04A.FH1.20231020.1" = "KFM04A-1",
+  "Forsmark.KFM04A.FH2.20231020.2" = "KFM04A-2",
+  "Forsmark.KFM04A.FH1.20231019.1" = "KFM04A-3",
+  "Forsmark.KFM04A.FH2.20231019.2" = "KFM04A-4",
+  "Forsmark.KFM04A.culture" = "KFM04A-culture",
+  "Forsmark.KFM10A.FH3.20231020.1" = "KFM10A-1",
+  "Forsmark.KFM10A.FH4.20231020.2" = "KFM10A-2"
+)
+
+names(DNA_cov) <- ifelse(
+  names(DNA_cov) %in% names(rename_DNA),
+  rename_DNA[names(DNA_cov)],
+  names(DNA_cov)
+)
+
+names(RNA_cov) <- ifelse(
+  names(RNA_cov) %in% names(rename_RNA),
+  rename_RNA[names(RNA_cov)],
+  names(RNA_cov)
+)
+
+# Keep only Forsmark KFM samples
+DNA_cov <- DNA_cov %>%
+  dplyr::select(
+    KO,
+    KO_name,
+    dplyr::starts_with("KFM")
+  )
+RNA_cov <- RNA_cov %>%
+  dplyr::select(
+    KO,
+    KO_name,
+    dplyr::starts_with("KFM")
+  )
+
+#pivot to long format
+DNA_long <- DNA_cov %>%
+  pivot_longer(cols = -c(KO, KO_name), names_to = "sample", values_to = "coverage") %>%
+  mutate(type = "DNA")
+
+RNA_long <- RNA_cov %>%
+  pivot_longer(cols = -c(KO, KO_name), names_to = "sample", values_to = "coverage") %>%
+  mutate(type = "RNA")
+
+cov_long <- bind_rows(DNA_long, RNA_long)
+
+cov_long <- cov_long %>% mutate(coverage = as.numeric(coverage))
+
+# join pathways
+Methanogenesis_genes <- read_excel("Methanogenesis genes.xlsx")
+cov_long <- cov_long %>%
+  left_join(Methanogenesis_genes, by = "KO") %>%
+  filter(!is.na(Pathway))   # drop KOs not in target pathways
+
+
+cov_long <- cov_long %>%
+  mutate(
+    sample_base = sub("-.*$", "", sample)
+  )
+
+pathway_size <- Methanogenesis_genes %>%
+  group_by(Pathway) %>%
+  summarise(total_KOs = n_distinct(KO), .groups = "drop")
+
+pathway_completeness <- cov_long %>%
+  filter(coverage > 0) %>%                # KO detected
+  group_by(sample_base, type, Pathway) %>%
+  summarise(
+    KOs_present = n_distinct(KO),
+    .groups = "drop"
+  ) %>%
+  left_join(pathway_size, by = "Pathway") %>%
+  mutate(
+    completeness = KOs_present / total_KOs
+  )
+
+pathway_completeness <- pathway_completeness %>%
+  mutate(
+    completeness_class = case_when(
+      completeness == 1 ~ "Complete",
+      completeness >= 0.5 ~ "Partial",
+      TRUE ~ "Partial"
+    )
+  )
+
+# aggregate per sample_base, type, and pathway
+cov_pathway_sample <- cov_long %>%
+  group_by(sample_base, type, Pathway) %>%
+  summarise(
+    KOs_present = n_distinct(KO[coverage > 0]),
+    coverage = sum(coverage, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  left_join(pathway_size, by = "Pathway") %>%
+  mutate(
+    completeness = KOs_present / total_KOs,
+    log_cov = log10(coverage + 1)
+  )
+
+cov_pathway_sample <- cov_pathway_sample %>%
+  mutate(
+    completeness_class = case_when(
+      completeness == 1 ~ "Complete",
+      completeness >= 0.5 ~ "Partial",
+      TRUE ~ "Partial"
+    )
+  )
+
+
+```
+
+
+```{r dotplot}
+pathway_colors <- c( c(
+  "#d95f02",  # orange
+  "#0072B2"  # Blue
+
+))
+ggplot(cov_pathway_sample, aes(x = Pathway, y = sample_base, size = log_cov, color = completeness_class)) +
+  geom_point(alpha = 0.9) +
+ # facet_grid(Site ~ type, scales = "free_y", space = "free_y") +
+  scale_size_continuous(name = "log10 (Coverage +1)", range = c(0, 10)) +
+  scale_color_manual(values = pathway_colors, guide = guide_legend(title = "Pathway")) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x = element_text(angle =90, hjust = 1, vjust = 0.4, size = 12, face = "italic", colour= 'black'),
+    axis.text.y = element_text(size = 12, colour = 'black', hjust = 1, vjust = 1),
+    strip.text = element_text(face = "bold", size = 14),
+    panel.grid.major = element_line(color = "grey90"),
+    panel.grid.minor = element_blank(),
+    panel.spacing = unit(1, "lines"),
+    legend.position = "right",
+    legend.title = element_text(face = "bold", size = 12),
+    legend.text = element_text(size = 10)
+  ) +
+  labs(x = "Pathway", y = "Sample")
+```
+
+## Supplemental Figures
+### Supplemental Figure 1
+```{r alpha diversity}
+library(vegan)
+DNA <- read.csv("stuff/stuff/DNA_relative_abundance_by_species.csv")
+rename_map <- c(
+  "KFM02a.2" = "KFM02A_2",
+  "KFM02a.3" = "KFM02A_3",
+  "KFM02a.5"   = "KFM02A_5",   
+  "KFM24.1"    = "KFM24_1",  
+  "KFM24.2"    = "KFM24_2",  
+  "KFM24.3" = "KFM24_3",
+  "KFM04.A.DNA1" = "KFM04A_1",
+  "KFM04.A.DNA2" = "KFM04A_2",
+  "KFM04.A.DNA3" = "KFM04A_3",
+  "KFM04.A.DNA4" = "KFM04A_4",
+  "KFM10.A.DNA1" = "KFM10A_1",
+  "KFM10.A.DNA2" = "KFM10A_2")
+
+DNA <- DNA[, intersect(names(DNA), names(rename_map)), drop = FALSE]
+DNA <- DNA[, intersect(names(DNA), names(rename_map)), drop = FALSE]
+
+for (old in names(rename_map)) {
+  if (old %in% names(DNA)) {
+    names(DNA)[names(DNA) == old] <- rename_map[[old]]
+  }
+}
+
+comm <- as.data.frame(t(DNA))
+
+richness <- specnumber(comm)
+
+shannon <- diversity(comm, index = "shannon")
+
+evenness <- shannon / log(richness)
+
+alpha_div <- data.frame(
+  sample = rownames(comm),
+  richness = richness,
+  shannon = shannon,
+
+  evenness = evenness
+)
+
+alpha_div
+
+alpha_div <- alpha_div %>%
+  mutate(borehole = sub("_.*", "", sample))  # extract borehole from sample name
+
+shapiro.test(alpha_div$shannon)
+
+kruskal.test(shannon ~ borehole, data = alpha_div)
+kruskal.test(richness ~ borehole, data = alpha_div)
+kruskal.test(evenness ~ borehole, data = alpha_div)
+
+pairwise.wilcox.test(alpha_div$shannon,
+                     alpha_div$borehole,
+                     p.adjust.method = "BH")
+```
+
+```{r boxplots per borehole}
+shannon <- ggplot(alpha_div, aes(x = borehole, y = shannon, fill = borehole)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.6) +
+  geom_jitter(width = 0.01, size = 2, color = "black") +  # add individual points
+  theme_minimal() +
+  labs(title = "Shannon",
+       x = NULL,
+       y = NULL) +
+  theme(text = element_text(size = 14),
+        axis.text.x = element_text(angle = 90),
+        legend.position = "none")
+
+
+evenness <- ggplot(alpha_div, aes(x = borehole, y = evenness, fill = borehole)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.6) +
+  geom_jitter(width = 0.01, size = 2, color = "black") +
+  theme_minimal() +
+  labs(title = "Evenness",
+       x = NULL,
+       y = NULL) +
+  theme(text = element_text(size = 14),
+        axis.text.x = element_text(angle = 90),
+        legend.position = "none")
+
+richness <- ggplot(alpha_div, aes(x = borehole, y = richness, fill = borehole)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.6) +
+  geom_jitter(width = 0.01, size = 2, color = "black") +
+  theme_minimal() +
+  labs(title = "Species richness",
+       x = NULL,
+       y = NULL) +
+  theme(text = element_text(size = 14),
+        axis.text.x = element_text(angle = 90),
+        legend.position = "none")
+
+barplots_diversity <- ggarrange(shannon, richness, evenness,
+                                      labels = c("a", "b", "c"),
+                                      ncol = 3, nrow = 1,  
+                                      legend = 'bottom',
+                                      common.legend = TRUE)
+barplots_diversity
+```
+
+### Figure 5
+```{r RDA}
+samples <- rownames(comm)
+borehole <- sub("_.*", "", samples)
+env <- read_excel("environmental.xlsx")
+env <- env[match(borehole, env$Borehole), ]
+rownames(env) <- samples
+
+comm_hel <- decostand(comm, method = "hellinger")
+
+env_clean <- env[, colSums(is.na(env)) == 0]
+
+env_clean <- env_clean %>% dplyr::select(-C2H6, -C3H8)
+
+env_num <- env_clean[, sapply(env_clean, is.numeric)]
+cor(env_num, use = "pairwise.complete.obs")
+
+rda_full <- rda(comm_hel ~ ., data = env_num)
+
+vif.cca(rda_full)
+
+RsquareAdj(rda_full)
+
+env_reduced <- env_num[, c("pH")]
+
+rda_model <- rda(comm_hel ~ pH, data = env_reduced)
+summary(rda_model)
+vif.cca(rda_model)
+
+anova(rda_model, permutations = 999)
+
+anova(rda_model, by = "term")
+anova(rda_model, by = "axis")
+envfit(rda_model, env_clean)
+
+borehole <- factor(sub("_.*", "", rownames(comm_hel)))
+
+# Fit envfit
+ef <- envfit(rda_model, env_num, permutations = 999)
+
+# site scores for plotting
+site_scores <- as.data.frame(scores(rda_model, display = "sites", scaling = 2))
+site_scores$sample <- rownames(site_scores)
+site_scores$borehole <- borehole
+
+# Extract only significant vectors for plotting 
+env_vectors <- as.data.frame(scores(ef, display = "vectors", scaling = 2))
+env_vectors$variable <- rownames(env_vectors)
+env_vectors <- env_vectors[ef$vectors$pvals <= 0.05, ]  # only significant
+
+var_explained <- summary(rda_model)$cont$importance[2, 1:2] * 100
+
+hulls <- site_scores %>%
+  group_by(borehole) %>%
+  slice(chull(RDA1, PC1))
+
+# Range of site scores 
+max_range <- max(abs(c(site_scores$RDA1, site_scores$PC1)))
+
+# Autoscale environmental arrows to 60% of plot range
+env_vectors$RDA1 <- env_vectors$RDA1 / max(abs(env_vectors$RDA1)) * max_range 
+env_vectors$PC1  <- env_vectors$PC1  / max(abs(env_vectors$PC1))  * max_range 
+
+env_vectors$lab_x <- env_vectors$RDA1 * 1.05
+env_vectors$lab_y <- env_vectors$PC1  * 1.0
+
+```
+
+```{r}
+ggplot() +
+  geom_polygon(data = hulls,
+               aes(RDA1, PC1, fill = borehole),
+               alpha = 0.2,
+               color = NA) +
+  geom_point(data = site_scores,
+             aes(RDA1, PC1, color = borehole),
+             size = 4) +
+  geom_segment(data = env_vectors,
+               aes(x = 0, y = 0, xend = RDA1, yend = PC1),
+               arrow = arrow(length = unit(0.35, "cm")),
+               color = "black",
+               linewidth = 0.7) +
+  geom_text(data = env_vectors,
+            aes(RDA1, PC1, label = variable),
+            size = 4.5,
+            color = "black",
+            vjust = -1) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey60") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey60") +
+  scale_x_continuous(expand = expansion(mult = 0.20)) +
+  scale_y_continuous(expand = expansion(mult = 0.20))  +
+  coord_equal() +
+  theme_classic(base_size = 14) +
+  labs(
+    title = "Redundancy Analysis (RDA) of Microbial Communities",
+    x = paste0("RDA1 (", round(var_explained[1], 1), "%)"),
+    y = paste0("PC1 (", round(var_explained[2], 1), "%)"),
+    color = "Borehole",
+    fill = "Borehole"
+  ) +
+  theme(
+    text = element_text(size = 14),
+    axis.text.y = element_text(size = 14),
+    axis.text.x = element_text(size = 14)
+  )
+
+```
+
+### supplementary Figure 2
+```{r beta diversity}
+dist <- vegdist(comm, method = "bray")
+
+pcoa <- cmdscale(dist, eig = TRUE, k = 2)
+
+scores <- as.data.frame(pcoa$points)
+colnames(scores) <- c("PCoA1", "PCoA2")
+
+scores$sample <- rownames(scores)
+scores$borehole <- borehole
+
+var_exp <- round(pcoa$eig / sum(pcoa$eig) * 100, 1)
+
+hulls <- scores %>%
+  group_by(borehole) %>%
+  slice(chull(PCoA1, PCoA2))
+
+ggplot(scores, aes(PCoA1, PCoA2, color = borehole)) +
+  geom_polygon(data = hulls,
+               aes(fill = borehole),
+               alpha = 0.2,
+               color = NA) +
+  geom_point(size = 4) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey70") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey70") +
+  coord_equal() +
+  theme_classic(base_size = 14) +
+  theme(
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 14, colour = "black"),
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 12)
+  ) +
+  labs(
+    title = "PCoA of Microbial Communities (Bray–Curtis)",
+    x = paste0("PCoA1 (", var_exp[1], "%)"),
+    y = paste0("PCoA2 (", var_exp[2], "%)"),
+    color = "Borehole",
+    fill = "Borehole"
+  )
+
+```
+
+### Supplementary Figure 6
+```{r count of proteins}
+metaproteomeDB_proteins <- read_excel(
+  "FW_ Proteomics/Lumos_240319_longradient_metaproteomeDB_proteins.xlsx", 
+  col_names = FALSE)
+colnames(metaproteomeDB_proteins) <- metaproteomeDB_proteins[2, ]
+metaproteomeDB_proteins <- metaproteomeDB_proteins[c(-1,-2),]
+
+proteins <- metaproteomeDB_proteins %>%
+  filter(Contaminant == "FALSE" & `Marked as` == "Metaproteome")
+
+proteins_forsmark <- proteins %>%
+  dplyr::select(
+    -all_of(c("Found in Sample: F11: Sample, 06" ,"Found in Sample: F10: Sample, 05",
+                     "Found in Sample: F9: Sample, 04", "Abundances Count: F11: Sample, 06",
+                     "Abundances Count: F10: Sample, 05", "Abundances Count: F9: Sample, 04",
+              "Abundance: F11: Sample, 06","Abundance: F10: Sample, 05","Abundance: F9: Sample, 04")))
+
+Acetyl <- proteins_forsmark %>%
+  filter(Description %in% c("Acetyl-coenzyme A synthetase", 
+                            "Acetate kinase", 
+                            "Phosphate acetyltransferase", 
+                            "Acetyl-CoA acetyltransferase",	
+                            "Carbon monoxide dehydrogenase/acetyl-CoA synthase subunit beta",
+                            "Carbon monoxide dehydrogenase/acetyl-CoA synthase subunit alpha")) %>%
+  dplyr::select(
+    all_of(c("Description", "Abundances Count: F7: Sample, 01",
+              "Abundances Count: F8: Sample, 02", "Abundances Count: F12: Sample, 03",
+              "Abundance: F7: Sample, 01","Abundance: F8: Sample, 02","Abundance: F12: Sample, 03")))
+Acetyl <- Acetyl%>% 
+  mutate(across(-Description, ~as.numeric(.)))
+Acetyl <- Acetyl %>%
+  rename( "KFM04A_count1" =  "Abundances Count: F7: Sample, 01" ,
+          "KFM04A_count2" = "Abundances Count: F8: Sample, 02" ,
+       "KFM10A_count" = "Abundances Count: F12: Sample, 03"  ,
+       "KFM04A_abundance1" = "Abundance: F7: Sample, 01"  ,
+       "KFM04A_abundance2" = "Abundance: F8: Sample, 02"  ,
+       "KFM10A_abundance" = "Abundance: F12: Sample, 03"  )
+
+Acetyl <- Acetyl %>%
+  mutate(
+    KFM04A_count     = (KFM04A_count1 + KFM04A_count2) / 2,
+    KFM04A_abundance = (KFM04A_abundance1 + KFM04A_abundance2) / 2
+  )
+
+Acetyl <- Acetyl %>%
+  dplyr::select(
+    -KFM04A_count1,
+    -KFM04A_count2,
+    -KFM04A_abundance1,
+    -KFM04A_abundance2
+  )
+
+Acetyl <- Acetyl %>%
+  mutate(
+    Description = recode(
+      Description,
+      "Carbon monoxide dehydrogenase/acetyl-CoA synthase subunit beta" = "Acetyl-coenzyme A synthase subunit beta",
+      "Carbon monoxide dehydrogenase/acetyl-CoA synthase subunit alpha" = "Acetyl-coenzyme A synthase subunit alpha"
+    )
+  )
+
+Acetyl_counts <- Acetyl %>%
+  dplyr::select(Description, contains("_count"))
+
+Acetyl_abund <- Acetyl %>%
+  dplyr::select(Description, contains("_abundance"))
+
+abund_long <- Acetyl_abund %>%
+  pivot_longer(
+    cols = -Description,
+    names_to = "Sample",
+    values_to = "Abundance"
+  ) 
+
+counts_long <- Acetyl_counts %>%
+  pivot_longer(
+    cols = -Description,
+    names_to = "Sample",
+    values_to = "Count"
+  ) 
+
+abund_long <- abund_long %>%
+  mutate(Sample = str_replace(Sample, "_abundance$", ""))
+
+counts_long <- counts_long %>%
+  mutate(Sample = str_replace(Sample, "_count$", ""))
+
+order <- c(
+  "Phosphate acetyltransferase",
+  "Acetate kinase",
+  "Acetyl-CoA acetyltransferase",
+  "Acetyl-coenzyme A synthetase", 
+  "Acetyl-coenzyme A synthase subunit alpha",
+  "Acetyl-coenzyme A synthase subunit beta"
+)
+
+
+```
+
+```{r}
+pc <- counts_long %>%
+  mutate(Description = factor(Description, levels = order)) %>%
+  ggplot(aes(x = Sample,
+             y = Count,
+             fill = Description)) +
+  geom_col(position = "dodge") +
+  theme_minimal(base_size = 16) + 
+  theme(axis.text.x = element_text(hjust = 1,colour = "black",size = 16),
+        axis.text.y = element_text(colour = "black",size = 16),
+        axis.title = element_text(size = 16),
+        legend.title = element_text(size = 16),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        legend.position = "right",
+        legend.direction = "vertical",
+        legend.box = "full",
+        legend.text = element_text(size = 16)) +
+  labs(title = "Protein Counts per Sample")
+
+pa <- abund_long %>%
+  mutate(Description = factor(Description, levels = order)) %>%
+  ggplot(aes(x = Sample,
+             y = Abundance,
+             fill = Description)) +
+  geom_col(position = "dodge") +
+  scale_y_log10() +
+  theme_minimal(base_size = 16) + 
+  theme(axis.text.x = element_text(hjust = 1,colour = "black",size = 16),
+        axis.text.y = element_text(colour = "black",size = 16),
+        axis.title = element_text(size = 16),
+        legend.title = element_text(size = 16),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        legend.position = "right",
+        legend.direction = "vertical",
+        legend.box = "full",
+        legend.text = element_text(size = 16)) +
+  labs(title = "Protein Abundance per Sample (log10 scale)")
+
+barplots_prot_forsmark <- ggarrange(pc, pa,
+                                     labels = c("a", "b"),
+                                     ncol = 1, nrow = 2,
+                                     legend = 'right',
+                                     common.legend = TRUE)
+barplots_prot_forsmark
+```
+
