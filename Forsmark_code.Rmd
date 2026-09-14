@@ -15,7 +15,6 @@ This is an R Markdown document. Markdown is a simple formatting syntax for autho
 
 
 ```{r set up}
-setwd("C:/Users/femke/OneDrive - Linnéuniversitetet/Dokument/Forsmark")
 library(readxl)
 library(tidyr)
 library(reshape2)
@@ -27,6 +26,7 @@ library(ggrepel)
 library(viridis)
 library(stringr)
 library(forcats)
+#renv::restore() #use to restore R environment
 ```
 
 ### Figure 1
@@ -100,7 +100,7 @@ baltic
 # Geochemical data
 
 ```{r gas data}
-Gasdata_KFM <- read_excel("Gasdata_all.xlsx", 
+Gasdata_KFM <- read_excel("data/Gasdata_all.xlsx", 
                                sheet = "Rtable", col_types = c("text", 
                                                                          "numeric", "numeric", "numeric", 
                                                                          "numeric", "numeric", "numeric", 
@@ -120,37 +120,7 @@ Gasdata_KFM$Source <- as.factor(Gasdata_KFM$Source)
 Gasdata_KFM <- Gasdata_KFM %>%
   mutate(Name = paste(Borehole, Section, sep = ":"))
 
-HydroChemTable_May21_HD <- read_excel("HydroChemTable_May21_HD.xlsx", 
-                                             skip = 2)
-
-SKBdata <- HydroChemTable_May21_HD %>%
-  mutate(Name = paste(IDCODE, SectionCode, sep = ":"))
-relevant_names <- unique(Gasdata_KFM$Name)
-SKB_filtered <- SKBdata %>%
-  filter(Name %in% relevant_names)
-
-SKB_summary <- SKB_filtered %>%
-  group_by(Name) %>%
-  summarise(
-    sulfate = mean(`SO4(mg/l)`, na.rm = TRUE),
-    Temperature = mean(`Temperature for modelling`, na.rm = TRUE),
-    pH = mean(`PH(pH)`, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-Gasdata_KFM2 <- Gasdata_KFM %>%
-  left_join(SKB_summary, by = "Name")
-
-Gasdata_KFM2 %>%
-  summarise(
-    n = n(),
-    ph_mean = mean(pH, na.rm = TRUE),
-    ph_sd = sd(pH, na.rm = TRUE),
-    ph_cv = ph_sd / ph_mean
-  )
-
-env <- Gasdata_KFM2[c(32, 33, 43,44), ]
-
+Gasdata_KFM2 <- read_excel("Gasdata_KFM2.xlsx") 
 
 ```
 
@@ -650,8 +620,6 @@ Fig4e
 [Open in a separate window](docs/KFM10a_krona_sunburst.html)
 
 ```{r prepare files}
-DNA_relative_abundance_by_species <- read.csv("stuff/stuff/DNA_relative_abundance_by_species.csv")
-RNA_relative_abundance_by_species <- read.csv("stuff/stuff/RNA_relative_abundance_by_species.csv")
 
 clean_taxonomy <- function(df) {
   df %>%
@@ -672,6 +640,8 @@ clean_taxonomy <- function(df) {
     mutate(taxon = coalesce(species, genus, family, order, class, phylum))
 }
 
+DNA <- read.csv("data/DNA_relative_abundance_by_species.csv")
+
 rename_map <- c(
   "KFM02a.2" = "KFM02A_2",
   "KFM02a.3" = "KFM02A_3",
@@ -686,14 +656,15 @@ rename_map <- c(
   "KFM10.A.DNA1" = "KFM10A_1",
   "KFM10.A.DNA2" = "KFM10A_2")
 
-bintax_DNA <- clean_taxonomy(DNA_relative_abundance_by_species)
+DNA <- DNA[, intersect(names(DNA), names(rename_map)), drop = FALSE]
 
-# rename columns
 for (old in names(rename_map)) {
-  if (old %in% names(bintax_DNA)) {
-    names(bintax_DNA)[names(bintax_DNA) == old] <- rename_map[[old]]
+  if (old %in% names(DNA)) {
+    names(DNA)[names(DNA) == old] <- rename_map[[old]]
   }
 }
+
+bintax_DNA <- clean_taxonomy(DNA)
 
 bintax_long_DNA <- bintax_DNA %>%
   pivot_longer(
@@ -708,6 +679,8 @@ bintax_long_DNA <- bintax_DNA %>%
   mutate(abundance = abundance / sum(abundance)) %>%
   ungroup()
 
+
+RNA <- read.csv("data/RNA_relative_abundance_by_species.csv")
 # Rename KFM replicates
 rename_map <- c(
   "Forsmark.KFM10A.FH3.20231020.1" = "KFM10A_1",
@@ -718,7 +691,7 @@ rename_map <- c(
   "Forsmark.KFM04A.FH2.20231019.2" = "KFM04A_2",
   "Forsmark.KFM04A.culture" = "culture"
 )
-bintax_RNA_clean <- clean_taxonomy(RNA_relative_abundance_by_species)
+bintax_RNA_clean <- clean_taxonomy(RNA)
 
 # rename columns
 for (old in names(rename_map)) {
@@ -811,7 +784,7 @@ RNA_plot_familyified <- RNA_plot_df %>% filter(family_plot != "Unclassified")
 ```{r plot}
 library(Polychrome)
 real_family <- setdiff(family_to_show, c("Unclassified", "Other"))
-length(real_family)  # should be 13
+length(real_family) 
 
 cb_real <- createPalette(
   length(real_family),
@@ -892,7 +865,7 @@ barplots_family_forsmark
 
 ### Figure 7
 ```{r create methanogen/acetogen data set}
-putative_acetogens_full <- read.csv("stuff/stuff/putative_acetogens_full.csv")
+putative_acetogens_full <- read.csv("data/putative_acetogens_full.csv")
 acetogens <- dplyr::select(putative_acetogens_full,tax,relabs.KFM10, relabs.KFM04,
   mOTU
 )
@@ -912,7 +885,7 @@ acetogens <- acetogens %>%
 
 #write.csv(acetogens, "acetogens_sunburst.csv", row.names = FALSE)
 
-key_genes_methanogenesis_acetoclastic <- read.csv("Moritz/key_genes_methanogenesis_acetoclastic.csv")
+key_genes_methanogenesis_acetoclastic <- read.csv("key_genes_methanogenesis_acetoclastic.csv")
 meth <- unique(c(key_genes_methanogenesis_acetoclastic$taxonomy,
                  c("d__Archaea;p__Methanobacteriota;c__Methanobacteria;o__Methanobacteriales;f__Methanobacteriaceae;g__UBA349;s__UBA349 sp023249725", 
                    "d__Archaea;p__Thermoplasmatota;c__Thermoplasmata;o__Methanomassiliicoccales;f__Methanomethylophilaceae;g__JAQUUA01;s__")))
@@ -1293,8 +1266,8 @@ activity_plot
 
 ### Figure 8
 ```{r prep dotplot}
-mOTU_data <- read.csv("Moritz/mOTU_data.csv") 
-DNA_cov <- read_excel("DNA_cov.xlsx", skip = 1)
+mOTU_data <- read.csv("data/mOTU_data.csv") 
+DNA_cov <- read_excel("data/DNA_cov.xlsx", skip = 1)
 DNA_cov <- DNA_cov %>%
   mutate(
     across(
@@ -1304,7 +1277,7 @@ DNA_cov <- DNA_cov %>%
   )
 DNA_cov <- DNA_cov %>%
   dplyr::select(-starts_with("..."))
-RNA_cov <- read.csv("Moritz/normed_RNA_covs_w_KOnames-WB-01969.csv")
+RNA_cov <- read.csv("data/normed_RNA_covs_w_KOnames.csv")
 
 #rename columns
 rename_DNA <- c(
@@ -1443,7 +1416,6 @@ pathway_colors <- c( c(
 ))
 ggplot(cov_pathway_sample, aes(x = Pathway, y = sample_base, size = log_cov, color = completeness_class)) +
   geom_point(alpha = 0.9) +
- # facet_grid(Site ~ type, scales = "free_y", space = "free_y") +
   scale_size_continuous(name = "log10 (Coverage +1)", range = c(0, 10)) +
   scale_color_manual(values = pathway_colors, guide = guide_legend(title = "Pathway")) +
   theme_minimal(base_size = 14) +
@@ -1465,29 +1437,6 @@ ggplot(cov_pathway_sample, aes(x = Pathway, y = sample_base, size = log_cov, col
 ### Supplemental Figure 1
 ```{r alpha diversity}
 library(vegan)
-DNA <- read.csv("stuff/stuff/DNA_relative_abundance_by_species.csv")
-rename_map <- c(
-  "KFM02a.2" = "KFM02A_2",
-  "KFM02a.3" = "KFM02A_3",
-  "KFM02a.5"   = "KFM02A_5",   
-  "KFM24.1"    = "KFM24_1",  
-  "KFM24.2"    = "KFM24_2",  
-  "KFM24.3" = "KFM24_3",
-  "KFM04.A.DNA1" = "KFM04A_1",
-  "KFM04.A.DNA2" = "KFM04A_2",
-  "KFM04.A.DNA3" = "KFM04A_3",
-  "KFM04.A.DNA4" = "KFM04A_4",
-  "KFM10.A.DNA1" = "KFM10A_1",
-  "KFM10.A.DNA2" = "KFM10A_2")
-
-DNA <- DNA[, intersect(names(DNA), names(rename_map)), drop = FALSE]
-DNA <- DNA[, intersect(names(DNA), names(rename_map)), drop = FALSE]
-
-for (old in names(rename_map)) {
-  if (old %in% names(DNA)) {
-    names(DNA)[names(DNA) == old] <- rename_map[[old]]
-  }
-}
 
 comm <- as.data.frame(t(DNA))
 
@@ -1568,7 +1517,7 @@ barplots_diversity
 ```{r RDA}
 samples <- rownames(comm)
 borehole <- sub("_.*", "", samples)
-env <- read_excel("environmental.xlsx")
+env <- read_excel("data/environmental.xlsx")
 env <- env[match(borehole, env$Borehole), ]
 rownames(env) <- samples
 
@@ -1718,8 +1667,7 @@ ggplot(scores, aes(PCoA1, PCoA2, color = borehole)) +
 
 ### Supplementary Figure 6
 ```{r count of proteins}
-metaproteomeDB_proteins <- read_excel(
-  "FW_ Proteomics/Lumos_240319_longradient_metaproteomeDB_proteins.xlsx", 
+metaproteomeDB_proteins <- read_excel("data/longradient_metaproteomeDB_proteins.xlsx", 
   col_names = FALSE)
 colnames(metaproteomeDB_proteins) <- metaproteomeDB_proteins[2, ]
 metaproteomeDB_proteins <- metaproteomeDB_proteins[c(-1,-2),]
@@ -1862,5 +1810,68 @@ barplots_prot_forsmark <- ggarrange(pc, pa,
                                      legend = 'right',
                                      common.legend = TRUE)
 barplots_prot_forsmark
+```
+
+```{r peptide analysis}
+
+peptides <- read.csv("data/peptides.csv")
+deepbio_GCs_basic <- read.csv("data/deepbio_GCs_basic.csv") 
+names(deepbio_GCs_basic)[1] <- "gene_cluster"
+
+library(tidyverse)
+
+peptides_tax <- peptides %>%
+  left_join(
+    deepbio_GCs_basic %>%
+      select(gene_cluster, lca_tax, KO_name, KO),
+    by = "gene_cluster"
+  )
+
+peptides_tax %>%
+  summarise(
+    n = n(),
+    no_gene_cluster = sum(is.na(gene_cluster)),
+    no_lca = sum(is.na(lca_tax)),
+    has_lca = sum(!is.na(lca_tax))
+  )
+
+peptide_detections <- peptides_tax %>%
+  pivot_longer(
+    cols = starts_with("FoundIn."),
+    names_to = "sample",
+    values_to = "detection"
+  ) %>%
+  mutate(
+    borehole = case_when(
+      str_detect(sample, "KFM04") ~ "KFM04",
+      str_detect(sample, "KFM010") ~ "KFM10",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  filter(!is.na(detection))
+
+peptide_borehole <- peptide_detections %>%
+  group_by(
+    `Annotated.Sequence`,
+    short,
+    gene_cluster,
+    lca_tax,
+    KO_name,
+    KO,
+    borehole
+  ) %>%
+  summarise(
+    n_samples_detected = n(),
+    detections = paste(unique(detection), collapse = "; "),
+    .groups = "drop"
+  )
+
+peptide_borehole %>%
+  summarise(
+    total_peptides = n_distinct(short),
+    tax_assigned = n_distinct(short[!is.na(lca_tax)]),
+    ko_assigned = n_distinct(short[!is.na(KO)]),
+    both_assigned = n_distinct(short[!is.na(lca_tax) & !is.na(KO)])
+  )
 ```
 
