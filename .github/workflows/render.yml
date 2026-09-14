@@ -30,8 +30,12 @@ jobs:
             libgeos-dev \
             libtbb-dev \
             libnetcdf-dev \
+<<<<<<< HEAD
             libsqlite3-dev \
             libudunits2-dev
+=======
+            libsqlite3-dev
+>>>>>>> 0f9f7d654344f5e3b397f4cb055ea07165b3173b
 
       - name: Restore R packages
         uses: r-lib/actions/setup-renv@v2
