@@ -21,6 +21,18 @@ jobs:
         with:
           r-version: "release"
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libproj-dev \
+            libgdal-dev \
+            libgeos-dev \
+            libtbb-dev \
+            libnetcdf-dev \
+            libsqlite3-dev \
+            libudunits2-dev
+
       - name: Restore R packages
         uses: r-lib/actions/setup-renv@v2
 
